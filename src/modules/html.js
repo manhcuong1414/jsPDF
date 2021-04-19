@@ -452,6 +452,7 @@ import { globalObject } from "../libs/globalObject.js";
         pdf.context2d.posX = this.opt.x;
         pdf.context2d.posY = this.opt.y;
         pdf.context2d.fontFaces = fontFaces;
+        pdf.context2d.margin = this.opt.margin;
 
         if (fontFaces) {
           for (var i = 0; i < fontFaces.length; ++i) {
