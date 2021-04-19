@@ -57,58 +57,58 @@ describe("Module: html", function() {
   //   comparePdf(doc.save('./margin/html-margin.pdf'), "html-margin.pdf", "html");
   // });
 
-  it("html margin on page break", async () => {
-    const doc = jsPDF({ floatPrecision: 2, unit: "pt" });
-    var margin = {
-      left: 30,
-      top: 10,
-      right: 60,
-      bottom: 20
-    }
-    console.log('rect size', doc.internal.pageSize.getWidth() - margin.right - margin.left, doc.internal.pageSize.getHeight() - margin.bottom - margin.top);
-    doc.rect(
-      margin.left,
-      margin.top,
-      doc.internal.pageSize.getWidth() - margin.right - margin.left,
-      doc.internal.pageSize.getHeight() - margin.bottom - margin.top
-    );
-    await new Promise(resolve =>
-      doc.html(
-        "<div style='background: red; width: 10px; height: 1000px;'></div>",
-        {
-          callback: resolve,
-          margin: [margin.left, margin.bottom, margin.right, margin.top]
-        }
-      )
-    );
-    doc.rect(
-      margin.left,
-      margin.top,
-      doc.internal.pageSize.getWidth() - margin.right - margin.left,
-      doc.internal.pageSize.getHeight() - margin.bottom - margin.top
-    );
-    doc.save('html-margin-page-break.pdf');
-    debugger;
-    // comparePdf(doc.output(), "html-margin-page-break.pdf", "html");
-  });
-  //
-  // it("html x, y offsets properly", async () => {
+  // it("html margin on page break", async () => {
   //   const doc = jsPDF({ floatPrecision: 2, unit: "pt" });
-  //   doc.line(30, 10, 100, 10);
-  //   doc.line(30, 10, 30, 100);
+  //   var margin = {
+  //     left: 30,
+  //     top: 10,
+  //     right: 60,
+  //     bottom: 20
+  //   }
+  //   console.log('rect size', doc.internal.pageSize.getWidth() - margin.right - margin.left, doc.internal.pageSize.getHeight() - margin.bottom - margin.top);
+  //   doc.rect(
+  //     margin.left,
+  //     margin.top,
+  //     doc.internal.pageSize.getWidth() - margin.right - margin.left,
+  //     doc.internal.pageSize.getHeight() - margin.bottom - margin.top
+  //   );
   //   await new Promise(resolve =>
   //     doc.html(
-  //       "<div style='background: red; width: 10px; height: 10px;'></div>",
+  //       "<div style='background: red; width: 10px; height: 1000px;'></div>",
   //       {
   //         callback: resolve,
-  //         x: 30,
-  //         y: 10
+  //         margin: [margin.left, margin.bottom, margin.right, margin.top]
   //       }
   //     )
   //   );
-  //   comparePdf(doc.output(), "html-x-y.pdf", "html");
+  //   doc.rect(
+  //     margin.left,
+  //     margin.top,
+  //     doc.internal.pageSize.getWidth() - margin.right - margin.left,
+  //     doc.internal.pageSize.getHeight() - margin.bottom - margin.top
+  //   );
+  //   doc.save('html-margin-page-break.pdf');
+  //   debugger;
+  //   // comparePdf(doc.output(), "html-margin-page-break.pdf", "html");
   // });
-  //
+
+  it("html x, y offsets properly", async () => {
+    const doc = jsPDF({ floatPrecision: 2, unit: "pt" });
+    doc.line(30, 10, 100, 10);
+    doc.line(30, 10, 30, 100);
+    await new Promise(resolve =>
+      doc.html(
+        "<div style='background: red; width: 10px; height: 10px;'></div>",
+        {
+          callback: resolve,
+          x: 30,
+          y: 10
+        }
+      )
+    );
+    comparePdf(doc.save("html-x-y.pdf"), "html-x-y.pdf", "html");
+  });
+
   // it("html x, y + margin offsets properly", async () => {
   //   const doc = jsPDF({ floatPrecision: 2, unit: "pt" });
   //   doc.line(30, 10, 100, 10);

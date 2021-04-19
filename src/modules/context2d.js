@@ -1548,8 +1548,8 @@ import {
     return {
       pageMaxWidthFromLeftMargin,
       pageMaxHeightFromTop,
-      contentBeginPosX: topMargin,
-      contentBeginPosY: leftMargin
+      contentBeginPosX: leftMargin,
+      contentBeginPosY: topMargin
     };
   };
 
@@ -1916,35 +1916,17 @@ import {
           var tmpPaths = this.path;
           clipPath = JSON.parse(JSON.stringify(this.ctx.clip_path));
 
-          if (this.margin.left || this.margin.right || this.margin.bottom
-            || this.margin.top) {
-            this.path = pathPositionForPage(clipPath, this.margin.left,
-              this.margin.top, pageMaxHeightFromTop,
-              pageMaxWidthFromLeftMargin, k);
-          } else {
-            this.path = pathPositionRedo(
-              clipPath,
-              contentBeginPosX,
-              contentBeginPosY
-            );
-          }
+          this.path = pathPositionForPage(clipPath, contentBeginPosX,
+            contentBeginPosY, pageMaxHeightFromTop,
+            pageMaxWidthFromLeftMargin, k);
 
           drawPaths.call(this, rule, true);
           this.path = tmpPaths;
         }
         tmpPath = JSON.parse(JSON.stringify(origPath));
-        if (this.margin.left || this.margin.right || this.margin.bottom
-          || this.margin.top) {
-          this.path = pathPositionForPage(tmpPath, this.margin.left,
-            this.margin.top, pageMaxHeightFromTop,
-            pageMaxWidthFromLeftMargin, k);
-        } else {
-          this.path = pathPositionRedo(
-            tmpPath,
-            contentBeginPosX,
-            contentBeginPosY
-          );
-        }
+        this.path = pathPositionForPage(tmpPath, contentBeginPosX,
+          contentBeginPosY, pageMaxHeightFromTop,
+          pageMaxWidthFromLeftMargin, k);
         if (isClip === false || k === 0) {
           drawPaths.call(this, rule, isClip);
         }
