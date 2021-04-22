@@ -57,7 +57,7 @@ import {
       right: 0,
       top: 0
     };
-    this.prevPageLastElemOffset = ctx.prevPageLastElemOffset || 0;
+    this.shiftingOffset = ctx.shiftingOffset || 0;
 
     this.ignoreClearRect =
       typeof ctx.ignoreClearRect === "boolean" ? ctx.ignoreClearRect : true;
@@ -1750,7 +1750,7 @@ import {
         );
         break;
       case "rect":
-        result.push(Math.floor((path.y + this.posY) / pageWrapY) + 1);
+        // result.push(Math.floor((path.y + this.posY) / pageWrapY) + 1);
         result.push(Math.floor((path.y + path.h + this.posY) / pageWrapY) + 1);
     }
 
@@ -1804,56 +1804,83 @@ import {
     });
   };
 
-  var splitByMaxHeight = function(y, maxHeight, pageNum) {
+  var valueShouldBeInBoundary = function(value, boundary) {
+    if (value > boundary.min) {
+      return Math.min(value, boundary.max);
+    }
+    if (value < boundary.min) {
+      if (!_ctx.shiftingOffset) {
+        _ctx.shiftingOffset = 0;
+      }
+      _ctx.shiftingOffset += (boundary.min - value);
+    }
+    return boundary.min;
+  };
+
+  var splitByYBoundary = function(y, yBoundary, pageNum) {
     if (pageNum <= 1) {
       // Recursive will ends when pageNum = 1
-      if (y > maxHeight) {
-        return maxHeight;
-      } else {
-        return y;
-      }
+      return valueShouldBeInBoundary(y, yBoundary);
     } else {
-      return splitByMaxHeight(y > maxHeight ? y - maxHeight : y, maxHeight,
+      return splitByYBoundary(y > yBoundary.max ? y - yBoundary.max : y,
+        yBoundary,
         pageNum - 1);
     }
   };
 
-  var splitByMaxWidth = function(x, maxWidth, pageNum) {
+  var splitByXBoundary = function(x, xBoundary, pageNum) {
     if (pageNum <= 1) {
       // Recursive will ends when pageNum = 1
-      if (x > maxWidth) {
-        return maxWidth;
-      } else {
-        return x;
-      }
+      return valueShouldBeInBoundary(x, xBoundary);
     } else {
-      return splitByMaxWidth(x > maxWidth ? x - maxWidth : x, maxWidth,
+      return splitByXBoundary(x > xBoundary.max ? x - xBoundary.max : x,
+        xBoundary,
         pageNum - 1);
     }
   };
 
-  var pathPositionForPage = function(paths, offsetX, offsetY, maxHeight,
-    maxWidth, pageNum) {
+  var shiftPositionByDistance = function(position, distance) {
+    return position + distance;
+  };
+
+  var pathPositionForPage = function(paths, xBoundary, yBoundary, pageNum) {
     for (var i = 0; i < paths.length; i++) {
       switch (paths[i].type) {
         case "bct":
-          paths[i].x2 = splitByMaxWidth(paths[i].x2 + offsetX, maxWidth,
+          paths[i].x2 = splitByXBoundary(
+            shiftPositionByDistance(paths[i].x2, xBoundary.min), xBoundary,
             pageNum);
-          paths[i].y2 = splitByMaxHeight(paths[i].y2 + offsetY, maxHeight,
+          paths[i].y2 = splitByYBoundary(
+            shiftPositionByDistance(paths[i].y2, yBoundary.min), yBoundary,
             pageNum);
           break;
         case "qct":
-          paths[i].x1 = splitByMaxWidth(paths[i].x1 + offsetX, maxWidth,
+          paths[i].x1 = splitByXBoundary(
+            shiftPositionByDistance(paths[i].x1, xBoundary.min), xBoundary,
             pageNum);
-          paths[i].y1 = splitByMaxHeight(paths[i].y1 + offsetX, maxHeight,
+          paths[i].y1 = splitByYBoundary(
+            shiftPositionByDistance(paths[i].y1, yBoundary.min), yBoundary,
             pageNum);
+          break;
+        case "rect":
+          paths[i].x = splitByXBoundary(
+            shiftPositionByDistance(paths[i].x, xBoundary.min), xBoundary,
+            pageNum);
+          paths[i].y = splitByYBoundary(
+            shiftPositionByDistance(paths[i].y, _ctx.shiftingOffset),
+            yBoundary,
+            pageNum);
+          break;
+        case "begin":
+          // Should not do anything
           break;
         case "mt":
         case "lt":
         case "arc":
         default:
-          paths[i].x = splitByMaxWidth(paths[i].x + offsetX, maxWidth, pageNum);
-          paths[i].y = splitByMaxHeight(paths[i].y + offsetY, maxHeight,
+          paths[i].x = splitByXBoundary(paths[i].x + xBoundary.min, xBoundary,
+            pageNum);
+          paths[i].y = splitByYBoundary(paths[i].y + yBoundary.min, yBoundary,
             pageNum);
       }
     }
@@ -1916,17 +1943,28 @@ import {
           var tmpPaths = this.path;
           clipPath = JSON.parse(JSON.stringify(this.ctx.clip_path));
 
-          this.path = pathPositionForPage(clipPath, contentBeginPosX,
-            contentBeginPosY, pageMaxHeightFromTop,
-            pageMaxWidthFromLeftMargin, k);
+          this.path = pathPositionForPage(clipPath,
+            {
+              min: contentBeginPosX,
+              max: pageMaxWidthFromLeftMargin + contentBeginPosX
+            },
+            {
+              min: contentBeginPosY,
+              max: pageMaxHeightFromTop + contentBeginPosY
+            }, k);
 
           drawPaths.call(this, rule, true);
           this.path = tmpPaths;
         }
         tmpPath = JSON.parse(JSON.stringify(origPath));
-        this.path = pathPositionForPage(tmpPath, contentBeginPosX,
-          contentBeginPosY, pageMaxHeightFromTop,
-          pageMaxWidthFromLeftMargin, k);
+        this.path = pathPositionForPage(tmpPath, {
+            min: contentBeginPosX,
+            max: pageMaxWidthFromLeftMargin + contentBeginPosX
+          },
+          {
+            min: contentBeginPosY,
+            max: pageMaxHeightFromTop + contentBeginPosY
+          }, k);
         if (isClip === false || k === 0) {
           drawPaths.call(this, rule, isClip);
         }
@@ -2243,18 +2281,20 @@ import {
     matrix = matrix.multiply(decomposedTransformationMatrix.scale);
 
     var textDimensions = this.pdf.getTextDimensions(options.text);
-    var textRect = this.ctx.transform.applyToRectangle(
-      new Rectangle(options.x, options.y, textDimensions.w, textDimensions.h)
-    );
     var textXRect = matrix.applyToRectangle(
       new Rectangle(
         options.x,
-        options.y - textDimensions.h,
+        Math.max(options.y - textDimensions.h, 0),
         textDimensions.w,
         textDimensions.h
       )
     );
-    var pageArray = getPagesByPath.call(this, textXRect);
+    var {
+      pageMaxHeightFromTop,
+      pageMaxWidthFromLeftMargin
+    } = getPageSize.call(this, 1);
+    var pageArray = getPagesByPath.call(this, textXRect,
+      pageMaxWidthFromLeftMargin, pageMaxHeightFromTop);
     var pages = [];
     for (var ii = 0; ii < pageArray.length; ii += 1) {
       if (pages.indexOf(pageArray[ii]) === -1) {
@@ -2271,23 +2311,42 @@ import {
       for (var i = min; i < max + 1; i++) {
         this.pdf.setPage(i);
 
+        // if (textRect.h + textRect.y > pageMaxHeightFromTop) {
+        //   i++;
+        //   if (this.pdf.internal.getNumberOfPages() < i) {
+        //     this.pdf.setPage(this.pdf.internal.getNumberOfPages());
+        //     addPage.call(this);
+        //   }
+        //   this.pdf.setPage(i);
+        // }
+        var {
+          contentBeginPosX,
+          contentBeginPosY
+        } = getPageSize.call(this, i);
+
         if (this.ctx.clip_path.length !== 0) {
           var tmpPaths = this.path;
           clipPath = JSON.parse(JSON.stringify(this.ctx.clip_path));
-          this.path = pathPositionRedo(
-            clipPath,
-            this.posX,
-            -1 * this.pdf.internal.pageSize.height * (i - 1) + this.posY
-          );
+          this.path = pathPositionForPage(clipPath, {
+              min: contentBeginPosX,
+              max: pageMaxWidthFromLeftMargin + contentBeginPosX
+            },
+            {
+              min: contentBeginPosY,
+              max: pageMaxHeightFromTop + contentBeginPosY
+            }, i);
           drawPaths.call(this, "fill", true);
           this.path = tmpPaths;
         }
-        var tmpRect = JSON.parse(JSON.stringify(textRect));
-        tmpRect = pathPositionRedo(
-          [tmpRect],
-          this.posX,
-          -1 * this.pdf.internal.pageSize.height * (i - 1) + this.posY
-        )[0];
+        var tmpRect = JSON.parse(JSON.stringify(textXRect));
+        tmpRect = pathPositionForPage([tmpRect], {
+            min: contentBeginPosX,
+            max: pageMaxWidthFromLeftMargin + contentBeginPosX
+          },
+          {
+            min: contentBeginPosY + textXRect.h,
+            max: pageMaxHeightFromTop + contentBeginPosY
+          }, i)[0];
 
         if (options.scale >= 0.01) {
           oldSize = this.pdf.internal.getFontSize();

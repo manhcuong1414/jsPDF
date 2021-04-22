@@ -56,7 +56,7 @@ describe("Module: html", function() {
   //   );
   //   comparePdf(doc.save('./margin/html-margin.pdf'), "html-margin.pdf", "html");
   // });
-
+  //
   // it("html margin on page break", async () => {
   //   const doc = jsPDF({ floatPrecision: 2, unit: "pt" });
   //   var margin = {
@@ -91,24 +91,24 @@ describe("Module: html", function() {
   //   debugger;
   //   // comparePdf(doc.output(), "html-margin-page-break.pdf", "html");
   // });
-
-  it("html x, y offsets properly", async () => {
-    const doc = jsPDF({ floatPrecision: 2, unit: "pt" });
-    doc.line(30, 10, 100, 10);
-    doc.line(30, 10, 30, 100);
-    await new Promise(resolve =>
-      doc.html(
-        "<div style='background: red; width: 10px; height: 10px;'></div>",
-        {
-          callback: resolve,
-          x: 30,
-          y: 10
-        }
-      )
-    );
-    comparePdf(doc.save("html-x-y.pdf"), "html-x-y.pdf", "html");
-  });
-
+  //
+  // it("html x, y offsets properly", async () => {
+  //   const doc = jsPDF({ floatPrecision: 2, unit: "pt" });
+  //   doc.line(30, 10, 100, 10);
+  //   doc.line(30, 10, 30, 100);
+  //   await new Promise(resolve =>
+  //     doc.html(
+  //       "<div style='background: red; width: 10px; height: 10px;'></div>",
+  //       {
+  //         callback: resolve,
+  //         x: 30,
+  //         y: 10
+  //       }
+  //     )
+  //   );
+  //   comparePdf(doc.save("html-x-y.pdf"), "html-x-y.pdf", "html");
+  // });
+  //
   // it("html x, y + margin offsets properly", async () => {
   //   const doc = jsPDF({ floatPrecision: 2, unit: "pt" });
   //   doc.line(30, 10, 100, 10);
@@ -120,38 +120,57 @@ describe("Module: html", function() {
   //         callback: resolve,
   //         x: 10,
   //         y: 3,
-  //         margin: [7, 20]
+  //         margin: [20, 0, 0, 7]
   //       }
   //     )
   //   );
-  //   comparePdf(doc.output(), "html-margin-x-y.pdf", "html");
+  //   comparePdf(doc.save("html-margin-x-y.pdf"), "html-margin-x-y.pdf", "html");
   // });
-  //
-  // it("page break with text", async () => {
-  //   const doc = jsPDF({ floatPrecision: 2, unit: "pt" });
-  //   doc.rect(
-  //     30,
-  //     10,
-  //     doc.internal.pageSize.getWidth() - 60,
-  //     doc.internal.pageSize.getHeight() - 20
-  //   );
-  //   await new Promise(resolve =>
-  //     doc.html(
-  //       "<span>Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua.Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua.</span>",
-  //       {
-  //         callback: resolve,
-  //         margin: [10, 30, 10, 30]
-  //       }
-  //     )
-  //   );
-  //   doc.rect(
-  //     30,
-  //     10,
-  //     doc.internal.pageSize.getWidth() - 60,
-  //     doc.internal.pageSize.getHeight() - 20
-  //   );
-  //   comparePdf(doc.output(), "html-margin-page-break-text.pdf", "html");
-  // });
+
+  it("page break with text", async () => {
+    const doc = jsPDF({ floatPrecision: 2, unit: "pt" });
+    var margin = {
+      left: 30,
+      top: 20,
+      right: 60,
+      bottom: 20
+    }
+    doc.rect(
+      margin.left,
+      margin.top,
+      doc.internal.pageSize.getWidth() - margin.right - margin.left,
+      doc.internal.pageSize.getHeight() - margin.bottom - margin.top
+    );
+
+    var str = ""
+    for (var i=0; i< 30; i++) {
+      str+="This is an example.".split(" ").join(i+" ");
+    }
+
+    await new Promise(resolve =>
+      doc.html(
+        `<span>${str}</span>`,
+        {
+          callback: resolve,
+          margin: [margin.left, margin.bottom, margin.right, margin.top]
+        }
+      )
+    );
+    doc.rect(
+      margin.left,
+      margin.top,
+      doc.internal.pageSize.getWidth() - margin.right - margin.left,
+      doc.internal.pageSize.getHeight() - margin.bottom - margin.top
+    );
+    doc.setPage(2);
+    doc.rect(
+      margin.left,
+      margin.top,
+      doc.internal.pageSize.getWidth() - margin.right - margin.left,
+      doc.internal.pageSize.getHeight() - margin.bottom - margin.top
+    );
+    comparePdf(doc.save("html-margin-page-break-text.pdf"), "html-margin-page-break-text.pdf", "html");
+  });
 
   it("renders font-faces", async () => {
     const opts = {
