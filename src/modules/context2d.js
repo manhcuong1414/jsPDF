@@ -16,6 +16,42 @@ import {
   resolveFontFace
 } from "../libs/fontFace.js";
 
+class ShiftingOffset {
+  constructor() {
+    this.offsetPerPage = [];
+  }
+
+  // INTERNAL API
+  _setOffset(offset, page) {
+    this.offsetPerPage[page] = offset;
+  }
+
+  _getOffsetOf(page) {
+    if (!this.offsetPerPage[page]) {
+      return 0;
+    }
+    return this.offsetPerPage[page];
+  }
+
+  // PUBLIC API
+  increaseOffsetBy(page, offset) {
+    this._setOffset(this._getOffsetOf(page) + offset, page);
+  }
+
+  decreaseOffsetBy(page, offset) {
+    this._setOffset(this._getOffsetOf(page) - offset, page);
+  }
+
+  getOffsetToPage(page) {
+    var sum = 0;
+    for (var i = 1; i <= page; i++) {
+      sum += this._getOffsetOf(i);
+    }
+
+    return sum;
+  }
+}
+
 /**
  * This plugin mimics the HTML5 CanvasRenderingContext2D.
  *
@@ -57,7 +93,7 @@ import {
       right: 0,
       top: 0
     };
-    this.shiftingOffset = ctx.shiftingOffset || 0;
+    this.shiftingOffset = ctx.shiftingOffset || new ShiftingOffset();
 
     this.ignoreClearRect =
       typeof ctx.ignoreClearRect === "boolean" ? ctx.ignoreClearRect : true;
@@ -1804,27 +1840,35 @@ import {
     });
   };
 
+  var updateShiftingOffsetForPage = function(value, boundary, page) {
+    if (value < boundary.min) {
+      _ctx.shiftingOffset.increaseOffsetBy(page, boundary.min - value);
+    }
+    if (value > boundary.max) {
+      _ctx.shiftingOffset.decreaseOffsetBy(page, value - boundary.max);
+    }
+  };
+
   var valueShouldBeInBoundary = function(value, boundary) {
     if (value > boundary.min) {
       return Math.min(value, boundary.max);
-    }
-    if (value < boundary.min) {
-      if (!_ctx.shiftingOffset) {
-        _ctx.shiftingOffset = 0;
-      }
-      _ctx.shiftingOffset += (boundary.min - value);
     }
     return boundary.min;
   };
 
   var splitByYBoundary = function(y, yBoundary, pageNum) {
-    if (pageNum <= 1) {
+    return _splitByYBoundary(y, yBoundary, pageNum, pageNum);
+  };
+
+  var _splitByYBoundary = function(y, yBoundary, curPageNum, originalPageNum) {
+    if (curPageNum <= 1) {
       // Recursive will ends when pageNum = 1
+      updateShiftingOffsetForPage(y, yBoundary, originalPageNum);
       return valueShouldBeInBoundary(y, yBoundary);
     } else {
-      return splitByYBoundary(y > yBoundary.max ? y - yBoundary.max : y,
+      return _splitByYBoundary(y > yBoundary.max ? y - yBoundary.max : y,
         yBoundary,
-        pageNum - 1);
+        curPageNum - 1, originalPageNum);
     }
   };
 
@@ -1846,41 +1890,37 @@ import {
   var pathPositionForPage = function(paths, xBoundary, yBoundary, pageNum) {
     for (var i = 0; i < paths.length; i++) {
       switch (paths[i].type) {
+        case "begin":
+          // Should not do anything
+          break;
         case "bct":
           paths[i].x2 = splitByXBoundary(
             shiftPositionByDistance(paths[i].x2, xBoundary.min), xBoundary,
             pageNum);
           paths[i].y2 = splitByYBoundary(
-            shiftPositionByDistance(paths[i].y2, yBoundary.min), yBoundary,
+            shiftPositionByDistance(paths[i].y2,
+              _ctx.shiftingOffset.getOffsetToPage(pageNum)), yBoundary,
             pageNum);
-          break;
         case "qct":
           paths[i].x1 = splitByXBoundary(
             shiftPositionByDistance(paths[i].x1, xBoundary.min), xBoundary,
             pageNum);
           paths[i].y1 = splitByYBoundary(
-            shiftPositionByDistance(paths[i].y1, yBoundary.min), yBoundary,
+            shiftPositionByDistance(paths[i].y1,
+              _ctx.shiftingOffset.getOffsetToPage(pageNum)), yBoundary,
             pageNum);
-          break;
+        case "mt":
+        case "lt":
         case "rect":
+        case "arc":
+        default:
           paths[i].x = splitByXBoundary(
             shiftPositionByDistance(paths[i].x, xBoundary.min), xBoundary,
             pageNum);
           paths[i].y = splitByYBoundary(
-            shiftPositionByDistance(paths[i].y, _ctx.shiftingOffset),
+            shiftPositionByDistance(paths[i].y,
+              _ctx.shiftingOffset.getOffsetToPage(pageNum)),
             yBoundary,
-            pageNum);
-          break;
-        case "begin":
-          // Should not do anything
-          break;
-        case "mt":
-        case "lt":
-        case "arc":
-        default:
-          paths[i].x = splitByXBoundary(paths[i].x + xBoundary.min, xBoundary,
-            pageNum);
-          paths[i].y = splitByYBoundary(paths[i].y + yBoundary.min, yBoundary,
             pageNum);
       }
     }
@@ -2311,14 +2351,6 @@ import {
       for (var i = min; i < max + 1; i++) {
         this.pdf.setPage(i);
 
-        // if (textRect.h + textRect.y > pageMaxHeightFromTop) {
-        //   i++;
-        //   if (this.pdf.internal.getNumberOfPages() < i) {
-        //     this.pdf.setPage(this.pdf.internal.getNumberOfPages());
-        //     addPage.call(this);
-        //   }
-        //   this.pdf.setPage(i);
-        // }
         var {
           contentBeginPosX,
           contentBeginPosY
