@@ -1,7 +1,7 @@
 /** @license
  *
  * jsPDF - PDF Document creation from JavaScript
- * Version 2.3.3 Built on 2021-04-27T04:50:14.417Z
+ * Version 2.3.4 Built on 2021-04-27T06:23:32.189Z
  *                      CommitID 00000000
  *
  * Copyright (c) 2010-2020 James Hall <james@parall.ax>, https://github.com/MrRio/jsPDF
@@ -6964,7 +6964,7 @@ jsPDF.API = {
  * @type {string}
  * @memberof jsPDF#
  */
-jsPDF.version = "2.3.3";
+jsPDF.version = "2.3.4";
 
 /* global jsPDF */
 
@@ -14621,6 +14621,7 @@ class ShiftingOffset {
         sheight * factorY
       )
     );
+    xRect.isImage = true;
     var {
       pageMaxHeightFromTop,
       pageMaxWidthFromLeftMargin
@@ -14716,9 +14717,6 @@ class ShiftingOffset {
         result.push(
           Math.floor((path.y + this.posY - path.radius) / pageWrapY) + 1
         );
-        // result.push(
-        //   Math.floor((path.y + this.posY + path.radius) / pageWrapY) + 1
-        // );
         break;
       case "qct":
         var rectOfQuadraticCurve = getQuadraticCurveBoundary(
@@ -14730,11 +14728,6 @@ class ShiftingOffset {
           path.y
         );
         result.push(Math.floor(rectOfQuadraticCurve.y / pageWrapY) + 1);
-        // result.push(
-        //   Math.floor(
-        //     (rectOfQuadraticCurve.y + rectOfQuadraticCurve.h) / pageWrapY
-        //   ) + 1
-        // );
         break;
       case "bct":
         var rectOfBezierCurve = getBezierCurveBoundary(
@@ -14748,14 +14741,12 @@ class ShiftingOffset {
           path.y
         );
         result.push(Math.floor(rectOfBezierCurve.y / pageWrapY) + 1);
-        // result.push(
-        //   Math.floor((rectOfBezierCurve.y + rectOfBezierCurve.h) / pageWrapY) +
-        //   1
-        // );
         break;
       case "rect":
         result.push(Math.floor((path.y + this.posY) / pageWrapY) + 1);
-      // result.push(Math.floor((path.y + path.h + this.posY) / pageWrapY) + 1);
+        if (path.isImage) {
+          result.push(Math.floor((path.y + path.h + this.posY) / pageWrapY) + 1);
+        }
     }
 
     for (var i = 0; i < result.length; i += 1) {
