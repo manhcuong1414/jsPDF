@@ -1,7 +1,7 @@
 /** @license
  *
  * jsPDF - PDF Document creation from JavaScript
- * Version 2.3.5 Built on 2021-04-27T07:35:05.009Z
+ * Version 2.3.6 Built on 2021-04-27T09:13:06.154Z
  *                      CommitID 00000000
  *
  * Copyright (c) 2010-2020 James Hall <james@parall.ax>, https://github.com/MrRio/jsPDF
