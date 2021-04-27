@@ -1,7 +1,6 @@
 {
   "name": "jspdf",
-  "version": "2.3.1",
-  "homepage": "https://github.com/mrrio/jspdf",
+  "version": "2.3.3",
   "description": "PDF Document creation from JavaScript",
   "main": "dist/jspdf.node.min.js",
   "module": "dist/jspdf.es.min.js",
@@ -18,10 +17,6 @@
     "pdf"
   ],
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/MrRio/jsPDF.git"
-  },
   "dependencies": {
     "atob": "^2.1.2",
     "btoa": "^1.2.1",

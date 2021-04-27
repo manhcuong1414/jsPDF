@@ -1,7 +1,7 @@
 /** @license
  *
  * jsPDF - PDF Document creation from JavaScript
- * Version 2.3.1 Built on 2021-03-08T15:44:11.672Z
+ * Version 2.3.3 Built on 2021-04-27T04:50:14.415Z
  *                      CommitID 00000000
  *
  * Copyright (c) 2010-2020 James Hall <james@parall.ax>, https://github.com/MrRio/jsPDF
@@ -51,7 +51,7 @@
 (function (global, factory) {
   typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
   typeof define === 'function' && define.amd ? define(['exports'], factory) :
-  (global = global || self, factory(global.jspdf = {}));
+  (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.jspdf = {}));
 }(this, (function (exports) { 'use strict';
 
   var globalObject = (function() {
@@ -741,13 +741,7 @@
     return (a + b) & 0xffffffff;
   }
 
-  if (md5("hello") != "5d41402abc4b2a76b9719d911017c592") {
-    function add32(x, y) {
-      var lsw = (x & 0xffff) + (y & 0xffff),
-        msw = (x >> 16) + (y >> 16) + (lsw >> 16);
-      return (msw << 16) | (lsw & 0xffff);
-    }
-  }
+  if (md5("hello") != "5d41402abc4b2a76b9719d911017c592") ;
 
   /**
    * @license
@@ -4662,7 +4656,7 @@
 
       //lang
 
-      var lang = options.lang;
+      options.lang;
 
       //renderingMode
       var renderingMode = -1;
@@ -6636,7 +6630,10 @@
 
     var endFormObject = function(key) {
       // only add it if it is not already present (the keys provided by the user must be unique!)
-      if (renderTargetMap[key]) return;
+      if (renderTargetMap[key]) {
+        renderTargetStack.pop().restore();
+        return;
+      }
 
       // save the created xObject
       var newXObject = new RenderTarget();
@@ -6971,7 +6968,7 @@
    * @type {string}
    * @memberof jsPDF#
    */
-  jsPDF.version = "2.3.1";
+  jsPDF.version = "2.3.3";
 
   /* global jsPDF */
 
@@ -13024,6 +13021,42 @@
 
   /* eslint-disable no-fallthrough */
 
+  class ShiftingOffset {
+    constructor() {
+      this.offsetPerPage = [];
+    }
+
+    // INTERNAL API
+    _setOffset(offset, page) {
+      this.offsetPerPage[page] = offset;
+    }
+
+    _getOffsetOf(page) {
+      if (!this.offsetPerPage[page]) {
+        return 0;
+      }
+      return this.offsetPerPage[page];
+    }
+
+    // PUBLIC API
+    increaseOffsetBy(page, offset) {
+      this._setOffset(this._getOffsetOf(page) + offset, page);
+    }
+
+    decreaseOffsetBy(page, offset) {
+      this._setOffset(this._getOffsetOf(page) - offset, page);
+    }
+
+    getOffsetToPage(page) {
+      var sum = 0;
+      for (var i = 1; i <= page; i++) {
+        sum += this._getOffsetOf(i);
+      }
+
+      return sum;
+    }
+  }
+
   /**
    * This plugin mimics the HTML5 CanvasRenderingContext2D.
    *
@@ -13058,6 +13091,13 @@
       this.currentPoint = ctx.currentPoint || new Point();
       this.miterLimit = ctx.miterLimit || 10.0;
       this.lastPoint = ctx.lastPoint || new Point();
+      this.margin = ctx.margin || {
+        left: 0,
+        bottom: 0,
+        right: 0,
+        top: 0
+      };
+      this.shiftingOffset = ctx.shiftingOffset || new ShiftingOffset();
 
       this.ignoreClearRect =
         typeof ctx.ignoreClearRect === "boolean" ? ctx.ignoreClearRect : true;
@@ -13227,6 +13267,39 @@
         set: function(value) {
           if (value instanceof ContextLayer) {
             _ctx = value;
+          }
+        }
+      });
+
+      /**
+       * [left, bottom, right, top]
+       * @name margin
+       * @type {array}
+       * @default [0, 0, 0, 0]
+       */
+      Object.defineProperty(this, "margin", {
+        get: function() {
+          return _ctx.margin;
+        },
+        set: function(value) {
+          if (Array.isArray(value)) {
+            // convert array style to object style
+            _ctx.margin = {
+              left: value[0],
+              bottom: value[1],
+              right: value[2],
+              top: value[3]
+            };
+          } else if (typeof value === "number") {
+            _ctx.margin = {
+              left: value,
+              bottom: value,
+              right: value,
+              top: value
+            };
+          } else {
+            // Object only
+            _ctx.margin = value;
           }
         }
       });
@@ -13511,10 +13584,10 @@
           matches = rx.exec(value);
           if (matches !== null) {
             var fontStyle = matches[1];
-            var fontVariant = matches[2];
+            matches[2];
             var fontWeight = matches[3];
             var fontSize = matches[4];
-            var lineHeight = matches[5];
+            matches[5];
             var fontFamily = matches[6];
           } else {
             return;
@@ -13911,7 +13984,7 @@
         var x_radPt0 = this.ctx.transform.applyToPoint(new Point(0, 0));
         radius = Math.sqrt(
           Math.pow(x_radPt.x - x_radPt0.x, 2) +
-            Math.pow(x_radPt.y - x_radPt0.y, 2)
+          Math.pow(x_radPt.y - x_radPt0.y, 2)
         );
       }
       if (Math.abs(endAngle - startAngle) >= 2 * Math.PI) {
@@ -14446,6 +14519,42 @@
       this.ctx.transform = new Matrix(a, b, c, d, e, f);
     };
 
+    var isFirstPage = function(pageNum) {
+      return pageNum === 1;
+    };
+
+    var getPageSize = function(pageNum) {
+      var topMargin = isFirstPage(pageNum) ? this.posY + this.margin.top
+        : this.margin.top;
+      var leftMargin = isFirstPage(pageNum) ? this.posX + this.margin.left
+        : this.margin.left; // should only use posX or margin left
+
+      /*var firstPageHeight =
+        this.pdf.internal.pageSize.height -
+        this.posY -
+        this.margin.top -
+        this.margin.bottom;
+      var pageHeightMinusMargin =
+        this.pdf.internal.pageSize.height - this.margin.bottom;
+      var pageWidthMinusMargin =
+        this.pdf.internal.pageSize.width - this.margin.right;
+      var previousPageHeightSum =
+        isFirstPage(pageNum) ? 0 : firstPageHeight + (pageNum - 2)
+          * pageHeightMinusMargin;*/
+
+      var pageMaxWidthFromLeftMargin = this.pdf.internal.pageSize.width
+        - leftMargin - this.margin.right;
+      var pageMaxHeightFromTop = this.pdf.internal.pageSize.height - topMargin
+        - this.margin.bottom;
+
+      return {
+        pageMaxWidthFromLeftMargin,
+        pageMaxHeightFromTop,
+        contentBeginPosX: leftMargin,
+        contentBeginPosY: topMargin
+      };
+    };
+
     /**
      * Draws an image, canvas, or video onto the canvas
      *
@@ -14516,7 +14625,12 @@
           sheight * factorY
         )
       );
-      var pageArray = getPagesByPath.call(this, xRect);
+      var {
+        pageMaxHeightFromTop,
+        pageMaxWidthFromLeftMargin
+      } = getPageSize.call(this, 1);
+      var pageArray = getPagesByPath.call(this, xRect, pageMaxWidthFromLeftMargin,
+        pageMaxHeightFromTop);
       var pages = [];
       for (var ii = 0; ii < pageArray.length; ii += 1) {
         if (pages.indexOf(pageArray[ii]) === -1) {
@@ -14533,22 +14647,36 @@
         for (var i = min; i < max + 1; i++) {
           this.pdf.setPage(i);
 
+          var {
+            contentBeginPosX,
+            contentBeginPosY
+          } = getPageSize.call(this, i);
+
           if (this.ctx.clip_path.length !== 0) {
             var tmpPaths = this.path;
             clipPath = JSON.parse(JSON.stringify(this.ctx.clip_path));
-            this.path = pathPositionRedo(
-              clipPath,
-              this.posX,
-              -1 * this.pdf.internal.pageSize.height * (i - 1) + this.posY
-            );
+            this.path = pathPositionForPage(clipPath, {
+                min: contentBeginPosX,
+                max: pageMaxWidthFromLeftMargin + contentBeginPosX
+              },
+              {
+                min: contentBeginPosY,
+                max: pageMaxHeightFromTop + contentBeginPosY
+              }, i);
             drawPaths.call(this, "fill", true);
             this.path = tmpPaths;
           }
           var tmpRect = JSON.parse(JSON.stringify(xRect));
-          tmpRect = pathPositionRedo(
+          tmpRect = pathPositionForPage(
             [tmpRect],
-            this.posX,
-            -1 * this.pdf.internal.pageSize.height * (i - 1) + this.posY
+            {
+              min: contentBeginPosX,
+              max: pageMaxWidthFromLeftMargin + contentBeginPosX
+            },
+            {
+              min: contentBeginPosY,
+              max: pageMaxHeightFromTop + contentBeginPosY
+            }, i
           )[0];
           this.pdf.addImage(
             img,
@@ -14592,9 +14720,9 @@
           result.push(
             Math.floor((path.y + this.posY - path.radius) / pageWrapY) + 1
           );
-          result.push(
-            Math.floor((path.y + this.posY + path.radius) / pageWrapY) + 1
-          );
+          // result.push(
+          //   Math.floor((path.y + this.posY + path.radius) / pageWrapY) + 1
+          // );
           break;
         case "qct":
           var rectOfQuadraticCurve = getQuadraticCurveBoundary(
@@ -14606,11 +14734,11 @@
             path.y
           );
           result.push(Math.floor(rectOfQuadraticCurve.y / pageWrapY) + 1);
-          result.push(
-            Math.floor(
-              (rectOfQuadraticCurve.y + rectOfQuadraticCurve.h) / pageWrapY
-            ) + 1
-          );
+          // result.push(
+          //   Math.floor(
+          //     (rectOfQuadraticCurve.y + rectOfQuadraticCurve.h) / pageWrapY
+          //   ) + 1
+          // );
           break;
         case "bct":
           var rectOfBezierCurve = getBezierCurveBoundary(
@@ -14624,14 +14752,14 @@
             path.y
           );
           result.push(Math.floor(rectOfBezierCurve.y / pageWrapY) + 1);
-          result.push(
-            Math.floor((rectOfBezierCurve.y + rectOfBezierCurve.h) / pageWrapY) +
-              1
-          );
+          // result.push(
+          //   Math.floor((rectOfBezierCurve.y + rectOfBezierCurve.h) / pageWrapY) +
+          //   1
+          // );
           break;
         case "rect":
           result.push(Math.floor((path.y + this.posY) / pageWrapY) + 1);
-          result.push(Math.floor((path.y + path.h + this.posY) / pageWrapY) + 1);
+        // result.push(Math.floor((path.y + path.h + this.posY) / pageWrapY) + 1);
       }
 
       for (var i = 0; i < result.length; i += 1) {
@@ -14658,30 +14786,91 @@
       this.lineJoin = lineJoin;
     };
 
-    var pathPositionRedo = function(paths, x, y) {
-      for (var i = 0; i < paths.length; i++) {
-        switch (paths[i].type) {
-          case "bct":
-            paths[i].x2 += x;
-            paths[i].y2 += y;
-          case "qct":
-            paths[i].x1 += x;
-            paths[i].y1 += y;
-          case "mt":
-          case "lt":
-          case "arc":
-          default:
-            paths[i].x += x;
-            paths[i].y += y;
-        }
-      }
-      return paths;
-    };
-
     var sortPages = function(pages) {
       return pages.sort(function(a, b) {
         return a - b;
       });
+    };
+
+    var valueShouldBeInBoundary = function(value, boundary) {
+      if (value > boundary.min) {
+        return Math.min(value, boundary.max);
+      }
+      return boundary.min;
+    };
+
+    var splitByYBoundary = function(y, yBoundary, pageNum) {
+      return _splitByYBoundary(y, yBoundary, pageNum);
+    };
+
+    var _splitByYBoundary = function(y, yBoundary, curPageNum, originalPageNum) {
+      if (curPageNum <= 1) {
+        // Recursive will ends when pageNum = 1
+        return y;
+      } else {
+        return _splitByYBoundary(y - yBoundary.max,
+          yBoundary,
+          curPageNum - 1);
+      }
+    };
+
+    var splitByXBoundary = function(x, xBoundary, pageNum) {
+      if (pageNum <= 1) {
+        // Recursive will ends when pageNum = 1
+        return x;
+      } else {
+        return splitByXBoundary(x > xBoundary.max ? x - xBoundary.max : x,
+          xBoundary,
+          pageNum - 1);
+      }
+    };
+
+    var shiftPositionByDistance = function(position, distance) {
+      return position + distance;
+    };
+
+    var pathPositionForPage = function(paths, xBoundary, yBoundary, pageNum) {
+      for (var i = 0; i < paths.length; i++) {
+        switch (paths[i].type) {
+          case "begin":
+          case "close":
+            // Should not do anything
+            break;
+          case "bct":
+            paths[i].x2 = splitByXBoundary(
+              shiftPositionByDistance(paths[i].x2, xBoundary.min), xBoundary,
+              pageNum);
+            paths[i].y2 = valueShouldBeInBoundary(splitByYBoundary(
+              shiftPositionByDistance(paths[i].y2,
+                pageNum * yBoundary.min), yBoundary,
+              pageNum), yBoundary);
+          case "qct":
+            paths[i].x1 = splitByXBoundary(
+              shiftPositionByDistance(paths[i].x1, xBoundary.min), xBoundary,
+              pageNum);
+            paths[i].y1 = valueShouldBeInBoundary(splitByYBoundary(
+              shiftPositionByDistance(paths[i].y1,
+                pageNum * yBoundary.min), yBoundary,
+              pageNum), yBoundary);
+          case "mt":
+          case "lt":
+          case "rect":
+          case "arc":
+          default:
+            paths[i].x = splitByXBoundary(
+              shiftPositionByDistance(paths[i].x, xBoundary.min), xBoundary,
+              pageNum);
+            paths[i].y = splitByYBoundary(
+              shiftPositionByDistance(paths[i].y,
+                pageNum * yBoundary.min),
+              yBoundary,
+              pageNum);
+            if (paths[i].type !== "rect") {
+              paths[i].y = valueShouldBeInBoundary(paths[i].y, yBoundary);
+            }
+        }
+      }
+      return paths;
     };
 
     var pathPreProcess = function(rule, isClip) {
@@ -14689,7 +14878,7 @@
       var strokeStyle = this.strokeStyle;
       var lineCap = this.lineCap;
       var oldLineWidth = this.lineWidth;
-      var lineWidth = oldLineWidth * this.ctx.transform.scaleX;
+      var lineWidth = Math.abs(oldLineWidth * this.ctx.transform.scaleX);
       var lineJoin = this.lineJoin;
 
       var origPath = JSON.parse(JSON.stringify(this.path));
@@ -14698,9 +14887,15 @@
       var tmpPath;
       var pages = [];
 
+      var {
+        pageMaxHeightFromTop,
+        pageMaxWidthFromLeftMargin
+      } = getPageSize.call(this, 1);
+
       for (var i = 0; i < xPath.length; i++) {
         if (typeof xPath[i].x !== "undefined") {
-          var page = getPagesByPath.call(this, xPath[i]);
+          var page = getPagesByPath.call(this, xPath[i],
+            pageMaxWidthFromLeftMargin, pageMaxHeightFromTop);
 
           for (var ii = 0; ii < page.length; ii += 1) {
             if (pages.indexOf(page[ii]) === -1) {
@@ -14729,23 +14924,37 @@
           this.lineWidth = lineWidth;
           this.lineJoin = lineJoin;
 
+          var {
+            contentBeginPosX,
+            contentBeginPosY
+          } = getPageSize.call(this, k);
+
           if (this.ctx.clip_path.length !== 0) {
             var tmpPaths = this.path;
             clipPath = JSON.parse(JSON.stringify(this.ctx.clip_path));
-            this.path = pathPositionRedo(
-              clipPath,
-              this.posX,
-              -1 * this.pdf.internal.pageSize.height * (k - 1) + this.posY
-            );
+
+            this.path = pathPositionForPage(clipPath,
+              {
+                min: contentBeginPosX,
+                max: pageMaxWidthFromLeftMargin + contentBeginPosX
+              },
+              {
+                min: contentBeginPosY,
+                max: pageMaxHeightFromTop + contentBeginPosY
+              }, k);
+
             drawPaths.call(this, rule, true);
             this.path = tmpPaths;
           }
           tmpPath = JSON.parse(JSON.stringify(origPath));
-          this.path = pathPositionRedo(
-            tmpPath,
-            this.posX,
-            -1 * this.pdf.internal.pageSize.height * (k - 1) + this.posY
-          );
+          this.path = pathPositionForPage(tmpPath, {
+              min: contentBeginPosX,
+              max: pageMaxWidthFromLeftMargin + contentBeginPosX
+            },
+            {
+              min: contentBeginPosY,
+              max: pageMaxHeightFromTop + contentBeginPosY
+            }, k);
           if (isClip === false || k === 0) {
             drawPaths.call(this, rule, isClip);
           }
@@ -14945,7 +15154,8 @@
     };
 
     Context2D.prototype.createLinearGradient = function createLinearGradient() {
-      var canvasGradient = function canvasGradient() {};
+      var canvasGradient = function canvasGradient() {
+      };
 
       canvasGradient.colorStops = [];
       canvasGradient.addColorStop = function(offset, color) {
@@ -14986,7 +15196,7 @@
 
       for (var i = 0; i < curves.length; i++) {
         var curve = curves[i];
-        if ( i === 0) {
+        if (i === 0) {
           doMove.call(this, curve.x1 + x, curve.y1 + y);
         }
         drawCurve.call(
@@ -15028,9 +15238,9 @@
     var doMove = function(x, y) {
       this.pdf.internal.out(
         getHorizontalCoordinateString(x) +
-          " " +
-          getVerticalCoordinateString(y) +
-          " m"
+        " " +
+        getVerticalCoordinateString(y) +
+        " m"
       );
     };
 
@@ -15059,18 +15269,20 @@
       matrix = matrix.multiply(decomposedTransformationMatrix.scale);
 
       var textDimensions = this.pdf.getTextDimensions(options.text);
-      var textRect = this.ctx.transform.applyToRectangle(
-        new Rectangle(options.x, options.y, textDimensions.w, textDimensions.h)
-      );
       var textXRect = matrix.applyToRectangle(
         new Rectangle(
           options.x,
-          options.y - textDimensions.h,
+          Math.max(options.y - textDimensions.h, 0),
           textDimensions.w,
           textDimensions.h
         )
       );
-      var pageArray = getPagesByPath.call(this, textXRect);
+      var {
+        pageMaxHeightFromTop,
+        pageMaxWidthFromLeftMargin
+      } = getPageSize.call(this, 1);
+      var pageArray = getPagesByPath.call(this, textXRect,
+        pageMaxWidthFromLeftMargin, pageMaxHeightFromTop);
       var pages = [];
       for (var ii = 0; ii < pageArray.length; ii += 1) {
         if (pages.indexOf(pageArray[ii]) === -1) {
@@ -15087,23 +15299,35 @@
         for (var i = min; i < max + 1; i++) {
           this.pdf.setPage(i);
 
+          var {
+            contentBeginPosX,
+            contentBeginPosY
+          } = getPageSize.call(this, i);
+
           if (this.ctx.clip_path.length !== 0) {
             var tmpPaths = this.path;
             clipPath = JSON.parse(JSON.stringify(this.ctx.clip_path));
-            this.path = pathPositionRedo(
-              clipPath,
-              this.posX,
-              -1 * this.pdf.internal.pageSize.height * (i - 1) + this.posY
-            );
+            this.path = pathPositionForPage(clipPath, {
+                min: contentBeginPosX,
+                max: pageMaxWidthFromLeftMargin + contentBeginPosX
+              },
+              {
+                min: contentBeginPosY,
+                max: pageMaxHeightFromTop + contentBeginPosY
+              }, i);
             drawPaths.call(this, "fill", true);
             this.path = tmpPaths;
           }
-          var tmpRect = JSON.parse(JSON.stringify(textRect));
-          tmpRect = pathPositionRedo(
-            [tmpRect],
-            this.posX,
-            -1 * this.pdf.internal.pageSize.height * (i - 1) + this.posY
-          )[0];
+          var tmpRect = JSON.parse(JSON.stringify(textXRect));
+          tmpRect.y += tmpRect.h;
+          tmpRect = pathPositionForPage([tmpRect], {
+              min: contentBeginPosX,
+              max: pageMaxWidthFromLeftMargin + contentBeginPosX
+            },
+            {
+              min: contentBeginPosY,
+              max: pageMaxHeightFromTop + contentBeginPosY
+            }, i)[0];
 
           if (options.scale >= 0.01) {
             oldSize = this.pdf.internal.getFontSize();
@@ -15150,9 +15374,9 @@
 
       this.pdf.internal.out(
         getHorizontalCoordinateString(x + prevX) +
-          " " +
-          getVerticalCoordinateString(y + prevY) +
-          " l"
+        " " +
+        getVerticalCoordinateString(y + prevY) +
+        " l"
       );
     };
 
@@ -15202,7 +15426,7 @@
       var sgn = anticlockwise ? -1 : +1;
 
       var a1 = startAngle;
-      for (; totalAngle > EPSILON; ) {
+      for (; totalAngle > EPSILON;) {
         var remain = sgn * Math.min(totalAngle, halfPi);
         var a2 = a1 + remain;
         curves.push(createSmallArc.call(this, radius, a1, a2));
@@ -16799,6 +17023,7 @@
           pdf.context2d.posX = this.opt.x;
           pdf.context2d.posY = this.opt.y;
           pdf.context2d.fontFaces = fontFaces;
+          pdf.context2d.margin = this.opt.margin;
 
           if (fontFaces) {
             for (var i = 0; i < fontFaces.length; ++i) {
@@ -17866,7 +18091,6 @@
         delayDen,
         delayNum,
         frame,
-        i,
         index,
         key,
         section,
@@ -17888,7 +18112,7 @@
         section = function() {
           var _i, _results;
           _results = [];
-          for (i = _i = 0; _i < 4; i = ++_i) {
+          for (_i = 0; _i < 4; ++_i) {
             _results.push(String.fromCharCode(this.data[this.pos++]));
           }
           return _results;
@@ -17941,9 +18165,9 @@
             }
             data = (frame != null ? frame.data : void 0) || this.imgData;
             for (
-              i = _i = 0;
+              _i = 0;
               0 <= chunkSize ? _i < chunkSize : _i > chunkSize;
-              i = 0 <= chunkSize ? ++_i : --_i
+              0 <= chunkSize ? ++_i : --_i
             ) {
               data.push(this.data[this.pos++]);
             }
@@ -17963,9 +18187,9 @@
                 palShort = palLen - this.transparency.indexed.length;
                 if (palShort > 0) {
                   for (
-                    i = _j = 0;
+                    _j = 0;
                     0 <= palShort ? _j < palShort : _j > palShort;
-                    i = 0 <= palShort ? ++_j : --_j
+                    0 <= palShort ? ++_j : --_j
                   ) {
                     this.transparency.indexed.push(255);
                   }
@@ -18026,12 +18250,12 @@
     }
 
     PNG.prototype.read = function(bytes) {
-      var i, _i, _results;
+      var _i, _results;
       _results = [];
       for (
-        i = _i = 0;
+        _i = 0;
         0 <= bytes ? _i < bytes : _i > bytes;
-        i = 0 <= bytes ? ++_i : --_i
+        0 <= bytes ? ++_i : --_i
       ) {
         _results.push(this.data[this.pos++]);
       }
@@ -18947,7 +19171,7 @@
     var global_palette_flag = pf0 >> 7;
     var num_global_colors_pow2 = pf0 & 0x7;
     var num_global_colors = 1 << (num_global_colors_pow2 + 1);
-    var background = buf[p++];
+    buf[p++];
     buf[p++]; // Pixel aspect ratio (unused?).
 
     var global_palette_offset = null;
@@ -26268,7 +26492,7 @@
       imagearray["frames"] = [];
       if (memcmp(src, src_off, "RIFF", 4)) return;
       src_off += 4;
-      var riff_size = GetLE32(src, src_off) + 8;
+      GetLE32(src, src_off) + 8;
       src_off += 8;
 
       while (src_off < src.length) {
@@ -26285,8 +26509,6 @@
             if (typeof imagearray["frames"][i] === "undefined")
               imagearray["frames"][i] = {};
             var obj = imagearray["frames"][i];
-            var height = [0];
-            var width = [0];
             obj["src_off"] = alpha_chunk ? alpha_offset : src_off - 8;
             obj["src_size"] = alpha_size + payload_size + 8;
             //var rgba = webpdecoder.WebPDecodeRGBA(src,(alpha_chunk?alpha_offset:src_off-8),alpha_size+payload_size+8,width,height);
@@ -26300,11 +26522,11 @@
             break;
           case "VP8X":
             var obj = (imagearray["header"] = {});
-            var feature_flags = (obj["feature_flags"] = src[src_off]);
+            (obj["feature_flags"] = src[src_off]);
             var src_off_ = src_off + 4;
-            var canvas_width = (obj["canvas_width"] = 1 + GetLE24(src, src_off_));
+            (obj["canvas_width"] = 1 + GetLE24(src, src_off_));
             src_off_ += 3;
-            var canvas_height = (obj["canvas_height"] =
+            (obj["canvas_height"] =
               1 + GetLE24(src, src_off_));
             src_off_ += 3;
             break;
@@ -26316,35 +26538,28 @@
 
           case "ANIM":
             var obj = imagearray["header"];
-            var bgcolor = (obj["bgcolor"] = GetLE32(src, src_off));
+            (obj["bgcolor"] = GetLE32(src, src_off));
             src_off_ = src_off + 4;
 
-            var loop_count = (obj["loop_count"] = GetLE16(src, src_off_));
+            (obj["loop_count"] = GetLE16(src, src_off_));
             src_off_ += 2;
             break;
           case "ANMF":
-            var offset_x = 0,
-              offset_y = 0,
-              width = 0,
-              height = 0,
-              duration = 0,
-              blend = 0,
-              dispose = 0,
-              temp = 0;
+            var temp = 0;
             var obj = (imagearray["frames"][i] = {});
-            obj["offset_x"] = offset_x = 2 * GetLE24(src, src_off);
+            obj["offset_x"] = 2 * GetLE24(src, src_off);
             src_off += 3;
-            obj["offset_y"] = offset_y = 2 * GetLE24(src, src_off);
+            obj["offset_y"] = 2 * GetLE24(src, src_off);
             src_off += 3;
-            obj["width"] = width = 1 + GetLE24(src, src_off);
+            obj["width"] = 1 + GetLE24(src, src_off);
             src_off += 3;
-            obj["height"] = height = 1 + GetLE24(src, src_off);
+            obj["height"] = 1 + GetLE24(src, src_off);
             src_off += 3;
-            obj["duration"] = duration = GetLE24(src, src_off);
+            obj["duration"] = GetLE24(src, src_off);
             src_off += 3;
             temp = src[src_off++];
-            obj["dispose"] = dispose = temp & 1;
-            obj["blend"] = blend = (temp >> 1) & 1;
+            obj["dispose"] = temp & 1;
+            obj["blend"] = (temp >> 1) & 1;
             break;
         }
         if (fourcc != "ANMF") src_off += payload_size_padded;
@@ -31244,11 +31459,11 @@
 
     var bidiEngineFunction = function(args) {
       var text = args.text;
-      var x = args.x;
-      var y = args.y;
+      args.x;
+      args.y;
       var options = args.options || {};
-      var mutex = args.mutex || {};
-      var lang = options.lang;
+      args.mutex || {};
+      options.lang;
       var tmpText = [];
 
       options.isInputVisual =
@@ -32756,7 +32971,7 @@
       MORE_COMPONENTS,
       WE_HAVE_AN_X_AND_Y_SCALE,
       WE_HAVE_A_SCALE,
-      WE_HAVE_A_TWO_BY_TWO;
+      WE_HAVE_A_TWO_BY_TWO;
     ARG_1_AND_2_ARE_WORDS = 0x0001;
     WE_HAVE_A_SCALE = 0x0008;
     MORE_COMPONENTS = 0x0020;

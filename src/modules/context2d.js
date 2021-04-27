@@ -1661,7 +1661,12 @@ class ShiftingOffset {
         sheight * factorY
       )
     );
-    var pageArray = getPagesByPath.call(this, xRect);
+    var {
+      pageMaxHeightFromTop,
+      pageMaxWidthFromLeftMargin
+    } = getPageSize.call(this, 1);
+    var pageArray = getPagesByPath.call(this, xRect, pageMaxWidthFromLeftMargin,
+      pageMaxHeightFromTop);
     var pages = [];
     for (var ii = 0; ii < pageArray.length; ii += 1) {
       if (pages.indexOf(pageArray[ii]) === -1) {
@@ -1748,9 +1753,9 @@ class ShiftingOffset {
         result.push(
           Math.floor((path.y + this.posY - path.radius) / pageWrapY) + 1
         );
-        result.push(
-          Math.floor((path.y + this.posY + path.radius) / pageWrapY) + 1
-        );
+        // result.push(
+        //   Math.floor((path.y + this.posY + path.radius) / pageWrapY) + 1
+        // );
         break;
       case "qct":
         var rectOfQuadraticCurve = getQuadraticCurveBoundary(
@@ -1762,11 +1767,11 @@ class ShiftingOffset {
           path.y
         );
         result.push(Math.floor(rectOfQuadraticCurve.y / pageWrapY) + 1);
-        result.push(
-          Math.floor(
-            (rectOfQuadraticCurve.y + rectOfQuadraticCurve.h) / pageWrapY
-          ) + 1
-        );
+        // result.push(
+        //   Math.floor(
+        //     (rectOfQuadraticCurve.y + rectOfQuadraticCurve.h) / pageWrapY
+        //   ) + 1
+        // );
         break;
       case "bct":
         var rectOfBezierCurve = getBezierCurveBoundary(
@@ -1780,14 +1785,14 @@ class ShiftingOffset {
           path.y
         );
         result.push(Math.floor(rectOfBezierCurve.y / pageWrapY) + 1);
-        result.push(
-          Math.floor((rectOfBezierCurve.y + rectOfBezierCurve.h) / pageWrapY) +
-          1
-        );
+        // result.push(
+        //   Math.floor((rectOfBezierCurve.y + rectOfBezierCurve.h) / pageWrapY) +
+        //   1
+        // );
         break;
       case "rect":
-        // result.push(Math.floor((path.y + this.posY) / pageWrapY) + 1);
-        result.push(Math.floor((path.y + path.h + this.posY) / pageWrapY) + 1);
+        result.push(Math.floor((path.y + this.posY) / pageWrapY) + 1);
+      // result.push(Math.floor((path.y + path.h + this.posY) / pageWrapY) + 1);
     }
 
     for (var i = 0; i < result.length; i += 1) {
@@ -1863,8 +1868,7 @@ class ShiftingOffset {
   var _splitByYBoundary = function(y, yBoundary, curPageNum, originalPageNum) {
     if (curPageNum <= 1) {
       // Recursive will ends when pageNum = 1
-      updateShiftingOffsetForPage(y, yBoundary, originalPageNum);
-      return valueShouldBeInBoundary(y, yBoundary);
+      return y;
     } else {
       return _splitByYBoundary(y > yBoundary.max ? y - yBoundary.max : y,
         yBoundary,
@@ -1875,7 +1879,7 @@ class ShiftingOffset {
   var splitByXBoundary = function(x, xBoundary, pageNum) {
     if (pageNum <= 1) {
       // Recursive will ends when pageNum = 1
-      return valueShouldBeInBoundary(x, xBoundary);
+      return x;
     } else {
       return splitByXBoundary(x > xBoundary.max ? x - xBoundary.max : x,
         xBoundary,
@@ -1887,28 +1891,29 @@ class ShiftingOffset {
     return position + distance;
   };
 
-  var pathPositionForPage = function(paths, xBoundary, yBoundary, pageNum) {
+  var pathPositionForPage = function(paths, xBoundary, yBoundary, pageNum, isClip) {
     for (var i = 0; i < paths.length; i++) {
       switch (paths[i].type) {
         case "begin":
+        case "close":
           // Should not do anything
           break;
         case "bct":
           paths[i].x2 = splitByXBoundary(
             shiftPositionByDistance(paths[i].x2, xBoundary.min), xBoundary,
             pageNum);
-          paths[i].y2 = splitByYBoundary(
+          paths[i].y2 = valueShouldBeInBoundary(splitByYBoundary(
             shiftPositionByDistance(paths[i].y2,
-              _ctx.shiftingOffset.getOffsetToPage(pageNum)), yBoundary,
-            pageNum);
+              pageNum * yBoundary.min), yBoundary,
+            pageNum), yBoundary);
         case "qct":
           paths[i].x1 = splitByXBoundary(
             shiftPositionByDistance(paths[i].x1, xBoundary.min), xBoundary,
             pageNum);
-          paths[i].y1 = splitByYBoundary(
+          paths[i].y1 = valueShouldBeInBoundary(splitByYBoundary(
             shiftPositionByDistance(paths[i].y1,
-              _ctx.shiftingOffset.getOffsetToPage(pageNum)), yBoundary,
-            pageNum);
+              pageNum * yBoundary.min), yBoundary,
+            pageNum), yBoundary);
         case "mt":
         case "lt":
         case "rect":
@@ -1919,9 +1924,12 @@ class ShiftingOffset {
             pageNum);
           paths[i].y = splitByYBoundary(
             shiftPositionByDistance(paths[i].y,
-              _ctx.shiftingOffset.getOffsetToPage(pageNum)),
+              pageNum * yBoundary.min),
             yBoundary,
             pageNum);
+          if (paths[i].type !== "rect") {
+            paths[i].y = valueShouldBeInBoundary(paths[i].y, yBoundary);
+          }
       }
     }
     return paths;
@@ -1941,9 +1949,15 @@ class ShiftingOffset {
     var tmpPath;
     var pages = [];
 
+    var {
+      pageMaxHeightFromTop,
+      pageMaxWidthFromLeftMargin
+    } = getPageSize.call(this, 1);
+
     for (var i = 0; i < xPath.length; i++) {
       if (typeof xPath[i].x !== "undefined") {
-        var page = getPagesByPath.call(this, xPath[i]);
+        var page = getPagesByPath.call(this, xPath[i],
+          pageMaxWidthFromLeftMargin, pageMaxHeightFromTop);
 
         for (var ii = 0; ii < page.length; ii += 1) {
           if (pages.indexOf(page[ii]) === -1) {
@@ -1974,9 +1988,7 @@ class ShiftingOffset {
 
         var {
           contentBeginPosX,
-          contentBeginPosY,
-          pageMaxHeightFromTop,
-          pageMaxWidthFromLeftMargin
+          contentBeginPosY
         } = getPageSize.call(this, k);
 
         if (this.ctx.clip_path.length !== 0) {
@@ -2371,12 +2383,13 @@ class ShiftingOffset {
           this.path = tmpPaths;
         }
         var tmpRect = JSON.parse(JSON.stringify(textXRect));
+        tmpRect.y += tmpRect.h;
         tmpRect = pathPositionForPage([tmpRect], {
             min: contentBeginPosX,
             max: pageMaxWidthFromLeftMargin + contentBeginPosX
           },
           {
-            min: contentBeginPosY + textXRect.h,
+            min: contentBeginPosY,
             max: pageMaxHeightFromTop + contentBeginPosY
           }, i)[0];
 

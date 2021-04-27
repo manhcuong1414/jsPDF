@@ -60,6 +60,42 @@ import {
   resolveFontFace
 } from "../libs/fontFace.js";
 
+class ShiftingOffset {
+  constructor() {
+    this.offsetPerPage = [];
+  }
+
+  // INTERNAL API
+  _setOffset(offset, page) {
+    this.offsetPerPage[page] = offset;
+  }
+
+  _getOffsetOf(page) {
+    if (!this.offsetPerPage[page]) {
+      return 0;
+    }
+    return this.offsetPerPage[page];
+  }
+
+  // PUBLIC API
+  increaseOffsetBy(page, offset) {
+    this._setOffset(this._getOffsetOf(page) + offset, page);
+  }
+
+  decreaseOffsetBy(page, offset) {
+    this._setOffset(this._getOffsetOf(page) - offset, page);
+  }
+
+  getOffsetToPage(page) {
+    var sum = 0;
+    for (var i = 1; i &lt;= page; i++) {
+      sum += this._getOffsetOf(i);
+    }
+
+    return sum;
+  }
+}
+
 /**
  * This plugin mimics the HTML5 CanvasRenderingContext2D.
  *
@@ -95,6 +131,13 @@ import {
     this.currentPoint = ctx.currentPoint || new Point();
     this.miterLimit = ctx.miterLimit || 10.0;
     this.lastPoint = ctx.lastPoint || new Point();
+    this.margin = ctx.margin || {
+      left: 0,
+      bottom: 0,
+      right: 0,
+      top: 0
+    };
+    this.shiftingOffset = ctx.shiftingOffset || new ShiftingOffset();
 
     this.ignoreClearRect =
       typeof ctx.ignoreClearRect === "boolean" ? ctx.ignoreClearRect : true;
@@ -264,6 +307,39 @@ import {
       set: function(value) {
         if (value instanceof ContextLayer) {
           _ctx = value;
+        }
+      }
+    });
+
+    /**
+     * [left, bottom, right, top]
+     * @name margin
+     * @type {array}
+     * @default [0, 0, 0, 0]
+     */
+    Object.defineProperty(this, "margin", {
+      get: function() {
+        return _ctx.margin;
+      },
+      set: function(value) {
+        if (Array.isArray(value)) {
+          // convert array style to object style
+          _ctx.margin = {
+            left: value[0],
+            bottom: value[1],
+            right: value[2],
+            top: value[3]
+          };
+        } else if (typeof value === "number") {
+          _ctx.margin = {
+            left: value,
+            bottom: value,
+            right: value,
+            top: value
+          };
+        } else {
+          // Object only
+          _ctx.margin = value;
         }
       }
     });
@@ -948,7 +1024,7 @@ import {
       var x_radPt0 = this.ctx.transform.applyToPoint(new Point(0, 0));
       radius = Math.sqrt(
         Math.pow(x_radPt.x - x_radPt0.x, 2) +
-          Math.pow(x_radPt.y - x_radPt0.y, 2)
+        Math.pow(x_radPt.y - x_radPt0.y, 2)
       );
     }
     if (Math.abs(endAngle - startAngle) >= 2 * Math.PI) {
@@ -1521,6 +1597,42 @@ import {
     }
   };
 
+  var isFirstPage = function(pageNum) {
+    return pageNum === 1;
+  };
+
+  var getPageSize = function(pageNum) {
+    var topMargin = isFirstPage(pageNum) ? this.posY + this.margin.top
+      : this.margin.top;
+    var leftMargin = isFirstPage(pageNum) ? this.posX + this.margin.left
+      : this.margin.left; // should only use posX or margin left
+
+    /*var firstPageHeight =
+      this.pdf.internal.pageSize.height -
+      this.posY -
+      this.margin.top -
+      this.margin.bottom;
+    var pageHeightMinusMargin =
+      this.pdf.internal.pageSize.height - this.margin.bottom;
+    var pageWidthMinusMargin =
+      this.pdf.internal.pageSize.width - this.margin.right;
+    var previousPageHeightSum =
+      isFirstPage(pageNum) ? 0 : firstPageHeight + (pageNum - 2)
+        * pageHeightMinusMargin;*/
+
+    var pageMaxWidthFromLeftMargin = this.pdf.internal.pageSize.width
+      - leftMargin - this.margin.right;
+    var pageMaxHeightFromTop = this.pdf.internal.pageSize.height - topMargin
+      - this.margin.bottom;
+
+    return {
+      pageMaxWidthFromLeftMargin,
+      pageMaxHeightFromTop,
+      contentBeginPosX: leftMargin,
+      contentBeginPosY: topMargin
+    };
+  };
+
   /**
    * Draws an image, canvas, or video onto the canvas
    *
@@ -1593,7 +1705,12 @@ import {
         sheight * factorY
       )
     );
-    var pageArray = getPagesByPath.call(this, xRect);
+    var {
+      pageMaxHeightFromTop,
+      pageMaxWidthFromLeftMargin
+    } = getPageSize.call(this, 1);
+    var pageArray = getPagesByPath.call(this, xRect, pageMaxWidthFromLeftMargin,
+      pageMaxHeightFromTop);
     var pages = [];
     for (var ii = 0; ii &lt; pageArray.length; ii += 1) {
       if (pages.indexOf(pageArray[ii]) === -1) {
@@ -1610,22 +1727,36 @@ import {
       for (var i = min; i &lt; max + 1; i++) {
         this.pdf.setPage(i);
 
+        var {
+          contentBeginPosX,
+          contentBeginPosY
+        } = getPageSize.call(this, i);
+
         if (this.ctx.clip_path.length !== 0) {
           var tmpPaths = this.path;
           clipPath = JSON.parse(JSON.stringify(this.ctx.clip_path));
-          this.path = pathPositionRedo(
-            clipPath,
-            this.posX,
-            -1 * this.pdf.internal.pageSize.height * (i - 1) + this.posY
-          );
+          this.path = pathPositionForPage(clipPath, {
+              min: contentBeginPosX,
+              max: pageMaxWidthFromLeftMargin + contentBeginPosX
+            },
+            {
+              min: contentBeginPosY,
+              max: pageMaxHeightFromTop + contentBeginPosY
+            }, i);
           drawPaths.call(this, "fill", true);
           this.path = tmpPaths;
         }
         var tmpRect = JSON.parse(JSON.stringify(xRect));
-        tmpRect = pathPositionRedo(
+        tmpRect = pathPositionForPage(
           [tmpRect],
-          this.posX,
-          -1 * this.pdf.internal.pageSize.height * (i - 1) + this.posY
+          {
+            min: contentBeginPosX,
+            max: pageMaxWidthFromLeftMargin + contentBeginPosX
+          },
+          {
+            min: contentBeginPosY,
+            max: pageMaxHeightFromTop + contentBeginPosY
+          }, i
         )[0];
         this.pdf.addImage(
           img,
@@ -1669,9 +1800,9 @@ import {
         result.push(
           Math.floor((path.y + this.posY - path.radius) / pageWrapY) + 1
         );
-        result.push(
-          Math.floor((path.y + this.posY + path.radius) / pageWrapY) + 1
-        );
+        // result.push(
+        //   Math.floor((path.y + this.posY + path.radius) / pageWrapY) + 1
+        // );
         break;
       case "qct":
         var rectOfQuadraticCurve = getQuadraticCurveBoundary(
@@ -1683,11 +1814,11 @@ import {
           path.y
         );
         result.push(Math.floor(rectOfQuadraticCurve.y / pageWrapY) + 1);
-        result.push(
-          Math.floor(
-            (rectOfQuadraticCurve.y + rectOfQuadraticCurve.h) / pageWrapY
-          ) + 1
-        );
+        // result.push(
+        //   Math.floor(
+        //     (rectOfQuadraticCurve.y + rectOfQuadraticCurve.h) / pageWrapY
+        //   ) + 1
+        // );
         break;
       case "bct":
         var rectOfBezierCurve = getBezierCurveBoundary(
@@ -1701,14 +1832,14 @@ import {
           path.y
         );
         result.push(Math.floor(rectOfBezierCurve.y / pageWrapY) + 1);
-        result.push(
-          Math.floor((rectOfBezierCurve.y + rectOfBezierCurve.h) / pageWrapY) +
-            1
-        );
+        // result.push(
+        //   Math.floor((rectOfBezierCurve.y + rectOfBezierCurve.h) / pageWrapY) +
+        //   1
+        // );
         break;
       case "rect":
         result.push(Math.floor((path.y + this.posY) / pageWrapY) + 1);
-        result.push(Math.floor((path.y + path.h + this.posY) / pageWrapY) + 1);
+      // result.push(Math.floor((path.y + path.h + this.posY) / pageWrapY) + 1);
     }
 
     for (var i = 0; i &lt; result.length; i += 1) {
@@ -1761,12 +1892,93 @@ import {
     });
   };
 
+  var valueShouldBeInBoundary = function(value, boundary) {
+    if (value > boundary.min) {
+      return Math.min(value, boundary.max);
+    }
+    return boundary.min;
+  };
+
+  var splitByYBoundary = function(y, yBoundary, pageNum) {
+    return _splitByYBoundary(y, yBoundary, pageNum, pageNum);
+  };
+
+  var _splitByYBoundary = function(y, yBoundary, curPageNum, originalPageNum) {
+    if (curPageNum &lt;= 1) {
+      // Recursive will ends when pageNum = 1
+      return y;
+    } else {
+      return _splitByYBoundary(y - yBoundary.max,
+        yBoundary,
+        curPageNum - 1, originalPageNum);
+    }
+  };
+
+  var splitByXBoundary = function(x, xBoundary, pageNum) {
+    if (pageNum &lt;= 1) {
+      // Recursive will ends when pageNum = 1
+      return x;
+    } else {
+      return splitByXBoundary(x > xBoundary.max ? x - xBoundary.max : x,
+        xBoundary,
+        pageNum - 1);
+    }
+  };
+
+  var shiftPositionByDistance = function(position, distance) {
+    return position + distance;
+  };
+
+  var pathPositionForPage = function(paths, xBoundary, yBoundary, pageNum) {
+    for (var i = 0; i &lt; paths.length; i++) {
+      switch (paths[i].type) {
+        case "begin":
+        case "close":
+          // Should not do anything
+          break;
+        case "bct":
+          paths[i].x2 = splitByXBoundary(
+            shiftPositionByDistance(paths[i].x2, xBoundary.min), xBoundary,
+            pageNum);
+          paths[i].y2 = valueShouldBeInBoundary(splitByYBoundary(
+            shiftPositionByDistance(paths[i].y2,
+              pageNum * yBoundary.min), yBoundary,
+            pageNum), yBoundary);
+        case "qct":
+          paths[i].x1 = splitByXBoundary(
+            shiftPositionByDistance(paths[i].x1, xBoundary.min), xBoundary,
+            pageNum);
+          paths[i].y1 = valueShouldBeInBoundary(splitByYBoundary(
+            shiftPositionByDistance(paths[i].y1,
+              pageNum * yBoundary.min), yBoundary,
+            pageNum), yBoundary);
+        case "mt":
+        case "lt":
+        case "rect":
+        case "arc":
+        default:
+          paths[i].x = splitByXBoundary(
+            shiftPositionByDistance(paths[i].x, xBoundary.min), xBoundary,
+            pageNum);
+          paths[i].y = splitByYBoundary(
+            shiftPositionByDistance(paths[i].y,
+              pageNum * yBoundary.min),
+            yBoundary,
+            pageNum);
+          if (paths[i].type !== "rect") {
+            paths[i].y = valueShouldBeInBoundary(paths[i].y, yBoundary);
+          }
+      }
+    }
+    return paths;
+  };
+
   var pathPreProcess = function(rule, isClip) {
     var fillStyle = this.fillStyle;
     var strokeStyle = this.strokeStyle;
     var lineCap = this.lineCap;
     var oldLineWidth = this.lineWidth;
-    var lineWidth = oldLineWidth * this.ctx.transform.scaleX;
+    var lineWidth = Math.abs(oldLineWidth * this.ctx.transform.scaleX);
     var lineJoin = this.lineJoin;
 
     var origPath = JSON.parse(JSON.stringify(this.path));
@@ -1775,9 +1987,15 @@ import {
     var tmpPath;
     var pages = [];
 
+    var {
+      pageMaxHeightFromTop,
+      pageMaxWidthFromLeftMargin
+    } = getPageSize.call(this, 1);
+
     for (var i = 0; i &lt; xPath.length; i++) {
       if (typeof xPath[i].x !== "undefined") {
-        var page = getPagesByPath.call(this, xPath[i]);
+        var page = getPagesByPath.call(this, xPath[i],
+          pageMaxWidthFromLeftMargin, pageMaxHeightFromTop);
 
         for (var ii = 0; ii &lt; page.length; ii += 1) {
           if (pages.indexOf(page[ii]) === -1) {
@@ -1806,23 +2024,37 @@ import {
         this.lineWidth = lineWidth;
         this.lineJoin = lineJoin;
 
+        var {
+          contentBeginPosX,
+          contentBeginPosY
+        } = getPageSize.call(this, k);
+
         if (this.ctx.clip_path.length !== 0) {
           var tmpPaths = this.path;
           clipPath = JSON.parse(JSON.stringify(this.ctx.clip_path));
-          this.path = pathPositionRedo(
-            clipPath,
-            this.posX,
-            -1 * this.pdf.internal.pageSize.height * (k - 1) + this.posY
-          );
+
+          this.path = pathPositionForPage(clipPath,
+            {
+              min: contentBeginPosX,
+              max: pageMaxWidthFromLeftMargin + contentBeginPosX
+            },
+            {
+              min: contentBeginPosY,
+              max: pageMaxHeightFromTop + contentBeginPosY
+            }, k);
+
           drawPaths.call(this, rule, true);
           this.path = tmpPaths;
         }
         tmpPath = JSON.parse(JSON.stringify(origPath));
-        this.path = pathPositionRedo(
-          tmpPath,
-          this.posX,
-          -1 * this.pdf.internal.pageSize.height * (k - 1) + this.posY
-        );
+        this.path = pathPositionForPage(tmpPath, {
+            min: contentBeginPosX,
+            max: pageMaxWidthFromLeftMargin + contentBeginPosX
+          },
+          {
+            min: contentBeginPosY,
+            max: pageMaxHeightFromTop + contentBeginPosY
+          }, k);
         if (isClip === false || k === 0) {
           drawPaths.call(this, rule, isClip);
         }
@@ -2022,7 +2254,8 @@ import {
   };
 
   Context2D.prototype.createLinearGradient = function createLinearGradient() {
-    var canvasGradient = function canvasGradient() {};
+    var canvasGradient = function canvasGradient() {
+    };
 
     canvasGradient.colorStops = [];
     canvasGradient.addColorStop = function(offset, color) {
@@ -2107,9 +2340,9 @@ import {
   var doMove = function(x, y) {
     this.pdf.internal.out(
       getHorizontalCoordinateString(x) +
-        " " +
-        getVerticalCoordinateString(y) +
-        " m"
+      " " +
+      getVerticalCoordinateString(y) +
+      " m"
     );
   };
 
@@ -2138,18 +2371,20 @@ import {
     matrix = matrix.multiply(decomposedTransformationMatrix.scale);
 
     var textDimensions = this.pdf.getTextDimensions(options.text);
-    var textRect = this.ctx.transform.applyToRectangle(
-      new Rectangle(options.x, options.y, textDimensions.w, textDimensions.h)
-    );
     var textXRect = matrix.applyToRectangle(
       new Rectangle(
         options.x,
-        options.y - textDimensions.h,
+        Math.max(options.y - textDimensions.h, 0),
         textDimensions.w,
         textDimensions.h
       )
     );
-    var pageArray = getPagesByPath.call(this, textXRect);
+    var {
+      pageMaxHeightFromTop,
+      pageMaxWidthFromLeftMargin
+    } = getPageSize.call(this, 1);
+    var pageArray = getPagesByPath.call(this, textXRect,
+      pageMaxWidthFromLeftMargin, pageMaxHeightFromTop);
     var pages = [];
     for (var ii = 0; ii &lt; pageArray.length; ii += 1) {
       if (pages.indexOf(pageArray[ii]) === -1) {
@@ -2166,23 +2401,35 @@ import {
       for (var i = min; i &lt; max + 1; i++) {
         this.pdf.setPage(i);
 
+        var {
+          contentBeginPosX,
+          contentBeginPosY
+        } = getPageSize.call(this, i);
+
         if (this.ctx.clip_path.length !== 0) {
           var tmpPaths = this.path;
           clipPath = JSON.parse(JSON.stringify(this.ctx.clip_path));
-          this.path = pathPositionRedo(
-            clipPath,
-            this.posX,
-            -1 * this.pdf.internal.pageSize.height * (i - 1) + this.posY
-          );
+          this.path = pathPositionForPage(clipPath, {
+              min: contentBeginPosX,
+              max: pageMaxWidthFromLeftMargin + contentBeginPosX
+            },
+            {
+              min: contentBeginPosY,
+              max: pageMaxHeightFromTop + contentBeginPosY
+            }, i);
           drawPaths.call(this, "fill", true);
           this.path = tmpPaths;
         }
-        var tmpRect = JSON.parse(JSON.stringify(textRect));
-        tmpRect = pathPositionRedo(
-          [tmpRect],
-          this.posX,
-          -1 * this.pdf.internal.pageSize.height * (i - 1) + this.posY
-        )[0];
+        var tmpRect = JSON.parse(JSON.stringify(textXRect));
+        tmpRect.y += tmpRect.h;
+        tmpRect = pathPositionForPage([tmpRect], {
+            min: contentBeginPosX,
+            max: pageMaxWidthFromLeftMargin + contentBeginPosX
+          },
+          {
+            min: contentBeginPosY,
+            max: pageMaxHeightFromTop + contentBeginPosY
+          }, i)[0];
 
         if (options.scale >= 0.01) {
           oldSize = this.pdf.internal.getFontSize();
@@ -2229,9 +2476,9 @@ import {
 
     this.pdf.internal.out(
       getHorizontalCoordinateString(x + prevX) +
-        " " +
-        getVerticalCoordinateString(y + prevY) +
-        " l"
+      " " +
+      getVerticalCoordinateString(y + prevY) +
+      " l"
     );
   };
 
@@ -2281,7 +2528,7 @@ import {
     var sgn = anticlockwise ? -1 : +1;
 
     var a1 = startAngle;
-    for (; totalAngle > EPSILON; ) {
+    for (; totalAngle > EPSILON;) {
       var remain = sgn * Math.min(totalAngle, halfPi);
       var a2 = a1 + remain;
       curves.push(createSmallArc.call(this, radius, a1, a2));
@@ -2442,7 +2689,7 @@ import {
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.4</a> on Mon Mar 08 2021 16:44:28 GMT+0100 (Central European Standard Time) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.6</a> on Tue Apr 27 2021 11:50:26 GMT+0700 (Indochina Time) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>
