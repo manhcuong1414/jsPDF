@@ -1661,6 +1661,7 @@ class ShiftingOffset {
         sheight * factorY
       )
     );
+    xRect.isImage = true;
     var {
       pageMaxHeightFromTop,
       pageMaxWidthFromLeftMargin
@@ -1691,33 +1692,36 @@ class ShiftingOffset {
         if (this.ctx.clip_path.length !== 0) {
           var tmpPaths = this.path;
           clipPath = JSON.parse(JSON.stringify(this.ctx.clip_path));
-          this.path = pathPositionRedo(
-            clipPath,
-            contentBeginPosX,
-            contentBeginPosY
-          );
+          this.path = pathPositionForPage(clipPath, {
+              min: contentBeginPosX,
+              max: pageMaxWidthFromLeftMargin + contentBeginPosX
+            },
+            {
+              min: contentBeginPosY,
+              max: pageMaxHeightFromTop + contentBeginPosY
+            }, i);
           drawPaths.call(this, "fill", true);
           this.path = tmpPaths;
         }
         var tmpRect = JSON.parse(JSON.stringify(xRect));
-        tmpRect = pathPositionRedo(
+        tmpRect = pathPositionForPage(
           [tmpRect],
-          contentBeginPosX,
-          contentBeginPosY
+          {
+            min: contentBeginPosX,
+            max: pageMaxWidthFromLeftMargin + contentBeginPosX
+          },
+          {
+            min: contentBeginPosY,
+            max: pageMaxHeightFromTop + contentBeginPosY
+          }, i
         )[0];
         this.pdf.addImage(
           img,
           "JPEG",
           tmpRect.x,
           tmpRect.y,
-          Math.min(
-            tmpRect.w,
-            this.pdf.internal.pageSize.width - this.margin.right - tmpRect.x
-          ),
-          Math.min(
-            tmpRect.h,
-            this.pdf.internal.pageSize.height - this.margin.bottom - tmpRect.y
-          ),
+          tmpRect.w,
+          tmpRect.h,
           null,
           null,
           angle
@@ -1753,9 +1757,6 @@ class ShiftingOffset {
         result.push(
           Math.floor((path.y + this.posY - path.radius) / pageWrapY) + 1
         );
-        // result.push(
-        //   Math.floor((path.y + this.posY + path.radius) / pageWrapY) + 1
-        // );
         break;
       case "qct":
         var rectOfQuadraticCurve = getQuadraticCurveBoundary(
@@ -1767,11 +1768,6 @@ class ShiftingOffset {
           path.y
         );
         result.push(Math.floor(rectOfQuadraticCurve.y / pageWrapY) + 1);
-        // result.push(
-        //   Math.floor(
-        //     (rectOfQuadraticCurve.y + rectOfQuadraticCurve.h) / pageWrapY
-        //   ) + 1
-        // );
         break;
       case "bct":
         var rectOfBezierCurve = getBezierCurveBoundary(
@@ -1785,14 +1781,12 @@ class ShiftingOffset {
           path.y
         );
         result.push(Math.floor(rectOfBezierCurve.y / pageWrapY) + 1);
-        // result.push(
-        //   Math.floor((rectOfBezierCurve.y + rectOfBezierCurve.h) / pageWrapY) +
-        //   1
-        // );
         break;
       case "rect":
         result.push(Math.floor((path.y + this.posY) / pageWrapY) + 1);
-      // result.push(Math.floor((path.y + path.h + this.posY) / pageWrapY) + 1);
+        if (path.isImage) {
+          result.push(Math.floor((path.y + path.h + this.posY) / pageWrapY) + 1);
+        }
     }
 
     for (var i = 0; i < result.length; i += 1) {
@@ -1819,39 +1813,10 @@ class ShiftingOffset {
     this.lineJoin = lineJoin;
   };
 
-  var pathPositionRedo = function(paths, x, y) {
-    for (var i = 0; i < paths.length; i++) {
-      switch (paths[i].type) {
-        case "bct":
-          paths[i].x2 += x;
-          paths[i].y2 += y;
-        case "qct":
-          paths[i].x1 += x;
-          paths[i].y1 += y;
-        case "mt":
-        case "lt":
-        case "arc":
-        default:
-          paths[i].x += x;
-          paths[i].y += y;
-      }
-    }
-    return paths;
-  };
-
   var sortPages = function(pages) {
     return pages.sort(function(a, b) {
       return a - b;
     });
-  };
-
-  var updateShiftingOffsetForPage = function(value, boundary, page) {
-    if (value < boundary.min) {
-      _ctx.shiftingOffset.increaseOffsetBy(page, boundary.min - value);
-    }
-    if (value > boundary.max) {
-      _ctx.shiftingOffset.decreaseOffsetBy(page, value - boundary.max);
-    }
   };
 
   var valueShouldBeInBoundary = function(value, boundary) {
@@ -1870,7 +1835,7 @@ class ShiftingOffset {
       // Recursive will ends when pageNum = 1
       return y;
     } else {
-      return _splitByYBoundary(y > yBoundary.max ? y - yBoundary.max : y,
+      return _splitByYBoundary(y - yBoundary.max,
         yBoundary,
         curPageNum - 1, originalPageNum);
     }
@@ -1891,7 +1856,7 @@ class ShiftingOffset {
     return position + distance;
   };
 
-  var pathPositionForPage = function(paths, xBoundary, yBoundary, pageNum, isClip) {
+  var pathPositionForPage = function(paths, xBoundary, yBoundary, pageNum) {
     for (var i = 0; i < paths.length; i++) {
       switch (paths[i].type) {
         case "begin":
