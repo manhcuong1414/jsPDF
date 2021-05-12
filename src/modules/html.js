@@ -27,14 +27,14 @@ import { globalObject } from "../libs/globalObject.js";
       }
 
       // @if MODULE_FORMAT='es'
-      return import("html2canvas");
+      return import("@doltech/html2canvas");
       // @endif
 
       // @if MODULE_FORMAT!='es'
       if (typeof exports === "object" && typeof module !== "undefined") {
         return new Promise(function(resolve, reject) {
           try {
-            resolve(require("html2canvas"));
+            resolve(require("@doltech/html2canvas"));
           } catch (e) {
             reject(e);
           }
@@ -43,7 +43,7 @@ import { globalObject } from "../libs/globalObject.js";
       if (typeof define === "function" && define.amd) {
         return new Promise(function(resolve, reject) {
           try {
-            require(["html2canvas"], resolve);
+            require(["@doltech/html2canvas"], resolve);
           } catch (e) {
             reject(e);
           }
