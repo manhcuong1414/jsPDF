@@ -1,6 +1,6 @@
 {
   "name": "@doltech/jspdf",
-  "version": "2.3.8",
+  "version": "2.3.9",
   "description": "PDF Document creation from JavaScript",
   "main": "dist/jspdf.node.min.js",
   "module": "dist/jspdf.es.min.js",
