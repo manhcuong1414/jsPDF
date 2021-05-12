@@ -1,7 +1,7 @@
 /** @license
  *
  * jsPDF - PDF Document creation from JavaScript
- * Version 2.3.9 Built on 2021-05-12T08:44:55.632Z
+ * Version 2.3.10 Built on 2021-05-12T08:51:23.512Z
  *                      CommitID 00000000
  *
  * Copyright (c) 2010-2020 James Hall <james@parall.ax>, https://github.com/MrRio/jsPDF
@@ -6964,7 +6964,7 @@ jsPDF.API = {
  * @type {string}
  * @memberof jsPDF#
  */
-jsPDF.version = "2.3.9";
+jsPDF.version = "2.3.10";
 
 /* global jsPDF */
 
@@ -15861,7 +15861,7 @@ class ShiftingOffset {
         return Promise.resolve(globalObject["html2canvas"]);
       }
 
-      return import('html2canvas');
+      return import('@doltech/html2canvas');
 
     })()
       .catch(function(e) {

@@ -1,7 +1,7 @@
 /** @license
  *
  * jsPDF - PDF Document creation from JavaScript
- * Version 2.3.9 Built on 2021-05-12T08:44:55.633Z
+ * Version 2.3.10 Built on 2021-05-12T08:51:23.512Z
  *                      CommitID 00000000
  *
  * Copyright (c) 2010-2020 James Hall <james@parall.ax>, https://github.com/MrRio/jsPDF
@@ -6773,7 +6773,7 @@ jsPDF.API = {
  * @type {string}
  * @memberof jsPDF#
  */
-jsPDF.version = "2.3.9";
+jsPDF.version = "2.3.10";
 
 /* global jsPDF */
 
@@ -15657,7 +15657,7 @@ class ShiftingOffset {
       if (typeof exports === "object" && typeof module !== "undefined") {
         return new Promise(function(resolve, reject) {
           try {
-            resolve(require("html2canvas"));
+            resolve(require("@doltech/html2canvas"));
           } catch (e) {
             reject(e);
           }
@@ -15666,7 +15666,7 @@ class ShiftingOffset {
       if (typeof define === "function" && define.amd) {
         return new Promise(function(resolve, reject) {
           try {
-            require(["html2canvas"], resolve);
+            require(["@doltech/html2canvas"], resolve);
           } catch (e) {
             reject(e);
           }
