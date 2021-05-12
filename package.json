@@ -1,6 +1,6 @@
 {
   "name": "@doltech/jspdf",
-  "version": "2.3.7",
+  "version": "2.3.8",
   "description": "PDF Document creation from JavaScript",
   "main": "dist/jspdf.node.min.js",
   "module": "dist/jspdf.es.min.js",
@@ -23,7 +23,7 @@
     "fflate": "^0.4.8"
   },
   "optionalDependencies": {
-    "@doltech/html2canvas": "^1.0.3",
+    "@doltech/html2canvas": "1.0.5",
     "canvg": "^3.0.6",
     "core-js": "^3.6.0",
     "dompurify": "^2.2.0"
